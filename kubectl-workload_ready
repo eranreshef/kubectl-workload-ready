@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+
+import time
+from kubernetes import config, client
+import click
+from click.exceptions import ClickException
+
+SUPPORTED_APIS = ['apps/v1', 'batch/v1']
+
+
+@click.command()
+@click.option('--kubeconfig', required=True, envvar='KUBECONFIG')
+@click.option('--namespace', '-n', 'ns', default='default')
+@click.option('--labels', '-l')
+@click.option('--all-namespaces', 'all_ns', is_flag=True)
+@click.option('--include-jobs', is_flag=True)
+@click.option('--all-apis', is_flag=True)
+@click.option('--timeout', '-t', default=300, type=click.INT)
+@click.argument('pods', required=False)
+def cmd(
+        kubeconfig,
+        ns,
+        labels,
+        all_ns,
+        include_jobs,
+        all_apis,
+        timeout,
+        pods
+):
+    if pods and labels:
+        raise ClickException(
+            'specific pod names can not be used when --labels option are used'
+        )
+
+    if pods and all_ns:
+        raise ClickException(
+            '--all-namespaces option can not be used when specific pod names'
+            'are supplied'
+        )
+
+    config.load_kube_config(kubeconfig)
+
+    v1 = client.CoreV1Api()
+
+    started_at = time.time()
+    timeout_at = started_at + timeout
+
+    unready_pods = check_pods_status(
+        v1,
+        ns,
+        labels,
+        pods,
+        all_ns,
+        include_jobs,
+        all_apis
+    )
+    while time.time() <= timeout_at and unready_pods:
+        time.sleep(10)
+        unready_pods = check_pods_status(
+            v1,
+            ns,
+            labels,
+            pods,
+            all_ns,
+            include_jobs,
+            all_apis
+        )
+        elapsed = int(time.time() - started_at)
+        click.echo(
+            f'\nAfter {elapsed} seconds, {len(unready_pods)} unready pods',
+        )
+        click.secho('\n'.join(unready_pods), fg='yellow')
+
+    if unready_pods:
+        pods_str = '\n'.join(unready_pods)
+        raise ClickException(
+            f"Timed out waiting for the following pods:\n{pods_str}"
+        )
+
+    click.echo('done')
+
+
+def check_pods_status(
+        k8s: client.CoreV1Api,
+        ns: str,
+        labels: str,
+        pod_names: list,
+        all_namespaces: bool,
+        include_jobs: bool,
+        all_apis
+):
+    pods = []
+    if all_namespaces:
+        if labels:
+            pods = k8s.list_pod_for_all_namespaces(label_selector=labels).items
+        else:
+            pods = k8s.list_pod_for_all_namespaces().items
+
+    else:
+        if pod_names:
+            for pod_name in pod_names:
+                pods += k8s.list_namespaced_pod(
+                    namespace=ns,
+                    field_selector=f'metadata.name={pod_name}'
+                ).items
+        else:
+            if labels:
+                pods = k8s.list_namespaced_pod(
+                    namespace=ns,
+                    label_selector=labels
+                ).items
+            else:
+                pods = k8s.list_namespaced_pod(namespace=ns).items
+    if not all_apis:
+        pods = [p for p in pods
+                if any(owner_ref.controller and
+                       owner_ref.api_version in SUPPORTED_APIS
+                       for owner_ref in p.metadata.owner_references)
+                ]
+
+    if not include_jobs:
+        pods = [p for p in pods
+                if any(owner_ref.controller and
+                       owner_ref.api_version != 'batch/v1'
+                       for owner_ref in p.metadata.owner_references)
+                ]
+
+    unready_pods = \
+        [f'{p.metadata.namespace}/{p.metadata.name}'
+         for p in pods
+         if not any((c.type == 'Ready' and c.status == 'True') or
+                    c.reason == 'PodCompleted'
+                    for c in p.status.conditions)]
+
+    return unready_pods
+
+
+if __name__ == '__main__':
+    cmd()
+
