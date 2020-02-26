@@ -27,6 +27,6 @@ jobs:
         pytest tests.py
     - name: Create executable
       run: |
-        apt-get install -y python3-dev
+        sudo apt-get install -y python3-dev
         pip install pyinstaller
         pyinstaller --onefile --distpath dist/ubuntu kubectl-workload_ready
