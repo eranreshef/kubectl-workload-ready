@@ -1,6 +1,15 @@
 name: Build
 
-on: [push]
+on:
+# triggered ONLY on push to branches and not on pushing tags
+  push:
+    branches:
+      - master
+    pull_request:
+      branches:
+      - master
+    tags-ignore:
+      - '**'
 
 jobs:
   build:
