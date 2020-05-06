@@ -114,16 +114,18 @@ def check_pods_status(
                 pods = k8s.list_namespaced_pod(namespace=ns).items
     if not all_apis:
         pods = [p for p in pods
-                if any(owner_ref.controller and
-                       owner_ref.api_version in SUPPORTED_APIS
-                       for owner_ref in p.metadata.owner_references)
+                if not p.metadata.owner_references or
+                any(owner_ref.controller and
+                    owner_ref.api_version in SUPPORTED_APIS
+                    for owner_ref in p.metadata.owner_references)
                 ]
 
     if not include_jobs:
         pods = [p for p in pods
-                if any(owner_ref.controller and
-                       owner_ref.api_version != 'batch/v1'
-                       for owner_ref in p.metadata.owner_references)
+                if not p.metadata.owner_references or
+                any(owner_ref.controller and
+                    owner_ref.api_version != 'batch/v1'
+                    for owner_ref in p.metadata.owner_references)
                 ]
 
     unready_pods = \
