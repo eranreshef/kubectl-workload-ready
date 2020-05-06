@@ -1,13 +1,17 @@
 name: Python application
 
-on: [push]
+on:
+  push:
+  release:
+    types:
+      - created
 
 jobs:
   build:
-    runs-on: ${{ matrix.os_version }}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os_version: [ubuntu-16.04, ubuntu-18.04, macos-10.15]
+        os: [ubuntu-16.04, macos-10.15]
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python 3.8
@@ -26,8 +30,17 @@ jobs:
       run: |
         pip install pytest
         pytest tests.py
+
+  release:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-16.04, macos-10.15]
+    steps:
     - name: install python-dev
-      if: startsWith(matrix.os_version, 'ubuntu')
+      if: startsWith(matrix.os, 'ubuntu')
       run: |
         sudo apt-get install -y python3-dev
     - name: Create executable
