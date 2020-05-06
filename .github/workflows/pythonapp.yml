@@ -2,9 +2,10 @@ name: Python application
 
 on:
   push:
-  release:
-    types:
-      - created
+    tags:
+      - 'v*'
+    branch:
+      - 'master'
 
 jobs:
   build:
@@ -31,9 +32,25 @@ jobs:
         pip install pytest
         pytest tests.py
 
-  release:
+  create_release:
     needs: build
-    if: github.event_name == 'release'
+    runs-on: ubuntu-16.04
+    steps:
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+
+  publish-executable:
+    needs: create_release
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -47,3 +64,13 @@ jobs:
       run: |
         pip install pyinstaller
         pyinstaller --onefile --distpath dist/${{ runner.os }} kubectl-workload_ready
+    - name: Upload Release Asset
+      id: upload-release-asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create_release.outputs.upload_url }}
+        asset_path: dist/${{ runner.os }}/kubectl-workload_ready
+        asset_name: kubectl-workload_ready_${{ runner.os }}
+        asset_content_type: application/bin
