@@ -54,6 +54,6 @@ jobs:
         pytest tests.py
     - name: Create executable
       run: |
-        sudo brew install -y python-dev
+        brew install -y python-dev
         pip install pyinstaller
         pyinstaller --onefile --distpath dist/ubuntu kubectl-workload_ready
